@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # scripts/patch-tags.sh
 #
-# For every upstream kanidm release tag, maintains a local tag of the same name
-# whose commit descends from both the upstream release and all patches/vMAJOR/*
-# branches for that major version.
+# For every upstream kanidm release tag at or above the configured minimum
+# minor version, maintains a local tag of the same name whose commit descends
+# from both the upstream release and all patches/vMAJOR/* branches.
 #
 # Idempotent: tags that already satisfy the ancestry conditions are skipped.
-# Tags older than the patch branch base are skipped (building them would pull in
-# unintended upstream changes).
 #
 # Usage:
 #   ./scripts/patch-tags.sh [--dry-run]
@@ -28,6 +26,13 @@ UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/kanidm/kanidm.git}"
 UPSTREAM_REMOTE="upstream"
 UPSTREAM_NS="refs/upstream_tags"
 DRY_RUN=0
+
+# Minimum minor version to process per major version. Tags below this floor
+# are skipped. Update when a patches/vMAJOR/* branch is rebased onto a newer
+# release that changes the patched lines.
+#   Key:   major version number (integer)
+#   Value: minimum minor version (integer, inclusive)
+declare -A PATCH_MIN_MINOR=([1]=6)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -65,6 +70,7 @@ release_tags() {
 }
 
 major_of() { echo "${1#v}" | cut -d. -f1; }
+minor_of() { echo "${1#v}" | cut -d. -f2; }
 
 patches_for_major() {
   git branch --list "patches/v${1}/*" --format='%(refname:short)'
@@ -91,29 +97,6 @@ tag_is_current() {
   local branch
   for branch in "${patch_branches[@]}"; do
     git merge-base --is-ancestor "${branch}^{commit}" "$local_commit" || return 1
-  done
-}
-
-# True if the upstream tag is at or after the base commit of every patch
-# branch. If not, merging the patch into this tag would pull in unintended
-# upstream changes (the patch was created against a newer release).
-tag_is_patchable() {
-  local tag="$1"; shift
-  local patch_branches=("$@")
-
-  local upstream_commit
-  upstream_commit=$(git rev-parse "${UPSTREAM_NS}/${tag}^{commit}")
-
-  local branch
-  for branch in "${patch_branches[@]}"; do
-    # The first parent of the patch branch tip is the upstream commit it was
-    # based on. The upstream tag must be a descendant of (or equal to) that
-    # base commit for a clean merge.
-    local branch_base
-    if ! branch_base=$(git rev-parse "${branch}^" 2>/dev/null); then
-      continue  # orphan branch; skip the check
-    fi
-    git merge-base --is-ancestor "$branch_base" "$upstream_commit" || return 1
   done
 }
 
@@ -178,8 +161,11 @@ main() {
       continue
     fi
 
-    if ! tag_is_patchable "$tag" "${patches[@]}"; then
-      log "  skip   $tag  (predates patch branch base — update patches/v${major}/* to support this release)"
+    local minor
+    minor=$(minor_of "$tag")
+    local min_minor="${PATCH_MIN_MINOR[$major]:-}"
+    if [[ -n "$min_minor" && "$minor" -lt "$min_minor" ]]; then
+      log "  skip   $tag  (below minimum minor version ${major}.${min_minor})"
       skipped=$((skipped + 1))
       continue
     fi
