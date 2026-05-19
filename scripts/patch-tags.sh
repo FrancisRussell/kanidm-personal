@@ -197,6 +197,8 @@ main() {
   if [[ ${#built[@]} -gt 0 ]]; then
     log ""
     log "Built: ${built[*]}"
+    # Expose built tags as a space-separated output for GitHub Actions callers.
+    [[ -n "${GITHUB_OUTPUT:-}" ]] && printf 'built_tags=%s\n' "${built[*]}" >> "$GITHUB_OUTPUT"
   fi
 
   if [[ ${#failed[@]} -gt 0 ]]; then

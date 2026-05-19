@@ -30,9 +30,12 @@ jobs:
         continue-on-error: true
 
       - name: Push updated tags
-        # Push even on partial failure so successfully-built tags are published.
+        # Only push tags the script actually built; avoids re-pushing all remote tags.
+        if: steps.patch.outputs.built_tags != ''
         run: |
-          git push origin 'refs/tags/*:refs/tags/*' --force
+          for tag in ${{ steps.patch.outputs.built_tags }}; do
+            git push origin "refs/tags/${tag}" --force
+          done
 
       - name: Ensure patch-conflict label exists
         env:
@@ -50,20 +53,31 @@ jobs:
           # Collect any failed tags from the script output.
           FAILED=$(grep '^FAIL ' /tmp/patch-output.txt | awk '{print $2}' || true)
 
-          # Find an existing open issue for patch failures (if any).
+          # Find an open or closed issue for patch failures (prefer open).
           ISSUE_NUMBER=$(gh issue list \
             --label patch-conflict \
             --state open \
             --json number \
             --jq '.[0].number' \
             2>/dev/null || echo "")
+          if [[ -z "$ISSUE_NUMBER" ]]; then
+            ISSUE_NUMBER=$(gh issue list \
+              --label patch-conflict \
+              --state closed \
+              --json number \
+              --jq '.[0].number' \
+              2>/dev/null || echo "")
+          fi
 
           if [[ -z "$FAILED" ]]; then
             # Everything succeeded: close any open failure issue.
             if [[ -n "$ISSUE_NUMBER" ]]; then
-              gh issue close "$ISSUE_NUMBER" \
-                --comment "All patch merges succeeded — closing automatically."
-              echo "Closed issue #${ISSUE_NUMBER}"
+              ISSUE_STATE=$(gh issue view "$ISSUE_NUMBER" --json state --jq '.state')
+              if [[ "$ISSUE_STATE" == "OPEN" ]]; then
+                gh issue close "$ISSUE_NUMBER" \
+                  --comment "All patch merges succeeded — closing automatically."
+                echo "Closed issue #${ISSUE_NUMBER}"
+              fi
             fi
           else
             # Build the issue body.
@@ -83,6 +97,7 @@ jobs:
 
             if [[ -n "$ISSUE_NUMBER" ]]; then
               gh issue edit "$ISSUE_NUMBER" --body-file /tmp/issue-body.md
+              gh issue reopen "$ISSUE_NUMBER" 2>/dev/null || true
               echo "Updated issue #${ISSUE_NUMBER}"
             else
               gh issue create \
