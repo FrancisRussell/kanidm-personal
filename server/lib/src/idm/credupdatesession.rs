@@ -1667,7 +1667,7 @@ impl IdmServerCredUpdateTransaction<'_> {
         let entropy = zxcvbn(cleartext, related_inputs);
 
         // PW's should always be enforced as strong as possible.
-        if entropy.score() < Score::Four {
+        if entropy.score() < Score::Two {
             // The password is too week as per:
             // https://docs.rs/zxcvbn/2.0.0/zxcvbn/struct.Entropy.html
             let feedback: zxcvbn::feedback::Feedback = entropy
