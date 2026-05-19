@@ -129,6 +129,10 @@ build_tag() {
         exit 1
       fi
     done
+    if [[ -d .github/workflows ]]; then
+      git rm -r --quiet .github/workflows
+      git commit --quiet -m "Remove upstream workflow files"
+    fi
     git tag -f "${tag}" HEAD
   ) || rc=$?
 
@@ -155,11 +159,6 @@ main() {
 
     local patches
     mapfile -t patches < <(patches_for_major "$major")
-
-    if [[ ${#patches[@]} -eq 0 ]]; then
-      skipped=$((skipped + 1))
-      continue
-    fi
 
     local minor
     minor=$(minor_of "$tag")

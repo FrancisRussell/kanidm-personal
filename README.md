@@ -39,29 +39,3 @@ API calls (push, issue management).
 Built and published by
 [kanidm-personal-ppa](https://github.com/FrancisRussell/kanidm-personal-ppa).
 
-## Initial patch branch setup
-
-After forking, create `patches/v1/password-policy` from the current upstream
-release and push it:
-
-```bash
-git remote add upstream https://github.com/kanidm/kanidm.git
-git fetch upstream refs/tags/v1.10.2 --depth 1
-git checkout -b patches/v1/password-policy FETCH_HEAD
-
-sed -i \
-  's/pub const PW_MIN_LENGTH: u32 = 10;/pub const PW_MIN_LENGTH: u32 = 8;/' \
-  server/lib/src/constants/mod.rs
-
-sed -i \
-  's/if entropy\.score() < Score::Four {/if entropy.score() < Score::Two {/' \
-  server/lib/src/idm/credupdatesession.rs
-
-git add server/lib/src/constants/mod.rs \
-        server/lib/src/idm/credupdatesession.rs
-git commit -m "Relax password policy (PW_MIN_LENGTH 10→8, zxcvbn Score::Four→Score::Two)"
-git push origin patches/v1/password-policy
-git checkout main
-```
-
-Re-run `patch-tags.sh` (or trigger the workflow) to build all release tags.

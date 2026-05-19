@@ -6,15 +6,22 @@ on:
   workflow_dispatch:        # Also triggerable manually from the Actions tab
 
 permissions:
-  contents: write   # push tags
+  contents: write   # needed for checkout
   issues: write     # create / edit / close the failure issue
 
 jobs:
   patch-tags:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify branch
+        run: |
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "This workflow must run on main (got ${GITHUB_REF})" >&2
+            exit 1
+          fi
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Fetch all local branches (patch branches live here too)
           fetch-depth: 0
@@ -74,8 +81,9 @@ jobs:
             if [[ -n "$ISSUE_NUMBER" ]]; then
               ISSUE_STATE=$(gh issue view "$ISSUE_NUMBER" --json state --jq '.state')
               if [[ "$ISSUE_STATE" == "OPEN" ]]; then
-                gh issue close "$ISSUE_NUMBER" \
-                  --comment "All patch merges succeeded — closing automatically."
+                gh issue edit "$ISSUE_NUMBER" \
+                  --body "All patch merges are succeeding — closing automatically."
+                gh issue close "$ISSUE_NUMBER"
                 echo "Closed issue #${ISSUE_NUMBER}"
               fi
             fi
